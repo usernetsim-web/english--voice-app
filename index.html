@@ -1,239 +1,222 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Игра с распознаванием речи</title>
-<style>
-  body {
-    margin: 0; padding: 0;
-    height: 100vh;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #4a00e0, #8e2de2);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    user-select: none;
-  }
-  #word {
-    font-size: 6rem;
-    font-weight: 900;
-    text-shadow: 0 0 10px rgba(255,255,255,0.7);
-    margin: 20px;
-    transition: transform 0.7s ease, opacity 0.7s ease;
-  }
-  #word.explode {
-    transform: scale(3);
-    opacity: 0;
-  }
-  #status {
-    font-size: 1.6rem;
-    margin-bottom: 30px;
-    min-height: 2em;
-    text-shadow: 0 0 5px rgba(0,0,0,0.4);
-  }
-  button {
-    font-size: 1.3rem;
-    padding: 12px 30px;
-    margin: 0 15px;
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    background: rgba(255,255,255,0.2);
-    backdrop-filter: blur(10px);
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-  }
-  button:disabled {
-    background: rgba(255,255,255,0.05);
-    cursor: not-allowed;
-  }
-  button:hover:not(:disabled) {
-    background: rgba(255,255,255,0.4);
-  }
-  #buttons {
-    display: flex;
-    justify-content: center;
-    margin-top: 10px;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>Игра с распознаванием речи</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 2rem;
+      background: #f0f0f0;
+    }
+    #word {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    #status {
+      margin: 1rem 0;
+      font-weight: bold;
+      min-height: 1.2em;
+    }
+    button {
+      font-size: 1.2rem;
+      padding: 0.5rem 1rem;
+      margin: 0 0.5rem;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-
-  <div id="word">Нажмите Старт</div>
+  <h1>Переведи слово с английского на русский</h1>
+  <div id="word">...</div>
   <div id="status"></div>
-  <div id="buttons">
-    <button id="startBtn">Старт</button>
-    <button id="stopBtn" disabled>Стоп</button>
-  </div>
+  <button id="startBtn">Начать</button>
+  <button id="stopBtn" disabled>Остановить</button>
 
-<script>
-(() => {
-  const dictionary = [
-    {en: 'apple', ru: ['яблоко', 'яблочко']},
-    {en: 'cat', ru: ['кот', 'кошка', 'котик']},
-    {en: 'dog', ru: ['собака', 'пёс', 'пес']},
-    {en: 'house', ru: ['дом', 'домик']},
-    {en: 'car', ru: ['машина', 'автомобиль']},
-    {en: 'book', ru: ['книга', 'книжка']},
-    {en: 'sun', ru: ['солнце']},
-    {en: 'water', ru: ['вода']},
-    {en: 'tree', ru: ['дерево']},
-    {en: 'bird', ru: ['птица']},
-  ];
+  <script>
+    (() => {
+      const dictionary = [
+        {en: 'apple', ru: ['яблоко', 'яблочко']},
+        {en: 'cat', ru: ['кот', 'кошка', 'котик']},
+        {en: 'dog', ru: ['собака', 'пёс', 'пес']},
+        {en: 'house', ru: ['дом', 'домик']},
+        {en: 'car', ru: ['машина', 'автомобиль']},
+        {en: 'book', ru: ['книга', 'книжка']},
+        {en: 'sun', ru: ['солнце']},
+        {en: 'water', ru: ['вода']},
+        {en: 'tree', ru: ['дерево']},
+        {en: 'bird', ru: ['птица']},
+      ];
 
-  const wordEl = document.getElementById('word');
-  const statusEl = document.getElementById('status');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
+      const wordEl = document.getElementById('word');
+      const statusEl = document.getElementById('status');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
 
-  let recognition = null;
-  let currentIndex = 0;
-  let isListening = false;
+      let recognition = null;
+      let currentIndex = 0;
+      let isListening = false;
 
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // Аудиоконтекст для звуков
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  function playShot() {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+      function playShot() {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
 
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
 
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
 
-    osc.start();
-    osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-    osc.stop(audioCtx.currentTime + 0.15);
-  }
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
+      }
 
-  function playMisfire() {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+      function explodeWord() {
+        playShot();
+        statusEl.textContent = 'Правильно! 🎉';
+        statusEl.style.color = 'green';
+      }
 
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      function misfire() {
+        statusEl.textContent = 'Неправильно, попробуйте ещё.';
+        statusEl.style.color = 'red';
+      }
 
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
+      function showWord() {
+        statusEl.textContent = '';
+        wordEl.textContent = dictionary[currentIndex].en;
+      }
 
-    osc.start();
-    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.2);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-    osc.stop(audioCtx.currentTime + 0.2);
-  }
+      function checkAnswer(text) {
+        if (!text) return false;
+        const variants = dictionary[currentIndex].ru;
+        const answer = text.toLowerCase().trim();
+        return variants.some(v => v.toLowerCase() === answer);
+      }
 
-  function showWord() {
-    currentIndex = currentIndex % dictionary.length;
-    const word = dictionary[currentIndex];
-    wordEl.textContent = word.en;
-    wordEl.classList.remove('explode');
-    wordEl.style.opacity = '1';
-    wordEl.style.transform = 'scale(1)';
-    statusEl.textContent = 'Произнесите перевод на русском';
-  }
+      // Функция озвучки английского слова, возвращает Promise для await
+      function sayEnglishWord(text) {
+        return new Promise(resolve => {
+          if (!window.speechSynthesis) {
+            resolve();
+            return;
+          }
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'en-US';
+          utterance.rate = 0.9;
+          utterance.onend = resolve;
+          window.speechSynthesis.speak(utterance);
+        });
+      }
 
-  function explodeWord() {
-    wordEl.classList.add('explode');
-    playShot();
-    statusEl.textContent = 'Правильно! Следующее слово...';
-  }
+      function initRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+          statusEl.textContent = 'Ваш браузер не поддерживает распознавание речи.';
+          startBtn.disabled = true;
+          return null;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recog = new SpeechRecognition();
+        recog.lang = 'ru-RU';
+        recog.interimResults = false;
+        recog.continuous = true;
+        recog.maxAlternatives = 1;
+        return recog;
+      }
 
-  function misfire() {
-    playMisfire();
-    statusEl.textContent = 'Неверно, попробуйте ещё раз.';
-  }
+      async function onRecognitionResult(event) {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+        console.log('Распознано:', transcript);
 
-  function checkAnswer(transcript) {
-    const userAnswer = transcript.toLowerCase().trim();
-    const correctAnswers = dictionary[currentIndex].ru;
-    return correctAnswers.some(ans => ans.toLowerCase() === userAnswer);
-  }
+        if (checkAnswer(transcript)) {
+          explodeWord();
+          // Останавливаем распознавание, чтобы не мешал голосовой синтез
+          recognition.stop();
+          isListening = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
 
-  function startRecognition() {
-    if (isListening) return;
+          await sayEnglishWord(dictionary[currentIndex].en);
 
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Ваш браузер не поддерживает Web Speech API');
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = 'ru-RU';
-    recognition.interimResults = false;
-    recognition.continuous = true;
-
-    recognition.onstart = () => {
-      isListening = true;
-      statusEl.textContent = 'Говорите сейчас...';
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-    };
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript;
-      console.log('Распознано:', transcript);
-
-      if (checkAnswer(transcript)) {
-        explodeWord();
-        currentIndex = (currentIndex + 1) % dictionary.length;
-        setTimeout(() => {
+          // Следующее слово
+          currentIndex = (currentIndex + 1) % dictionary.length;
           showWord();
-        }, 700);
-      } else {
-        misfire();
-      }
-    };
 
-    recognition.onerror = (event) => {
-      console.warn('Ошибка распознавания:', event.error);
-      statusEl.textContent = 'Ошибка распознавания: ' + event.error;
-      if(event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        stopRecognition();
-      }
-    };
+          // Возобновляем распознавание
+          recognition.start();
+          isListening = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
 
-    recognition.onend = () => {
-      if (isListening) {
+          statusEl.textContent = '';
+        } else {
+          misfire();
+        }
+      }
+
+      function startListening() {
+        if (!recognition) return;
+        if (isListening) return;
         recognition.start();
+        isListening = true;
+        statusEl.textContent = 'Говорите...';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
       }
-    };
 
-    showWord();
-    recognition.start();
-  }
+      function stopListening() {
+        if (!recognition) return;
+        if (!isListening) return;
+        recognition.stop();
+        isListening = false;
+        statusEl.textContent = 'Остановлено.';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
 
-  function stopRecognition() {
-    if (recognition) {
-      isListening = false;
-      recognition.stop();
-      recognition = null;
-    }
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    statusEl.textContent = 'Распознавание остановлено.';
-    wordEl.textContent = 'Нажмите Старт';
-    wordEl.classList.remove('explode');
-  }
+      function setupRecognition() {
+        recognition = initRecognition();
+        if (!recognition) return;
 
-  startBtn.addEventListener('click', () => {
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    startRecognition();
-  });
+        recognition.onresult = onRecognitionResult;
 
-  stopBtn.addEventListener('click', () => {
-    stopRecognition();
-  });
-})();
-</script>
+        recognition.onerror = (event) => {
+          console.error('Ошибка распознавания:', event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            statusEl.textContent = 'Нет доступа к микрофону. Разрешите доступ.';
+            startBtn.disabled = true;
+          }
+        };
+
+        recognition.onend = () => {
+          // Автоматически перезапускаем распознавание, если слушаем
+          if (isListening) {
+            recognition.start();
+          }
+        };
+      }
+
+      startBtn.addEventListener('click', () => {
+        // Для некоторых браузеров AudioContext нужно запускать по событию пользователя
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        startListening();
+      });
+
+      stopBtn.addEventListener('click', () => {
+        stopListening();
+      });
+
+      // Инициализация
+      showWord();
+      setupRecognition();
+    })();
+  </script>
 </body>
 </html>
