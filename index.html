@@ -3,88 +3,64 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Английское слово — скажи перевод</title>
+<title>Игра с распознаванием речи</title>
 <style>
   body {
-    background: #121212;
-    color: #eee;
     font-family: Arial, sans-serif;
+    background: #222;
+    color: #eee;
+    margin: 0; padding: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100vh;
-    margin: 0;
-    user-select: none;
   }
   #word {
-    font-size: 72px;
-    font-weight: 700;
-    padding: 20px 40px;
-    border-radius: 12px;
-    background: linear-gradient(45deg, #4a90e2, #50e3c2);
-    color: white;
-    cursor: default;
+    font-size: 5rem;
+    margin: 20px;
+    transition: transform 0.7s ease, opacity 0.7s ease;
     user-select: none;
-    transition: transform 0.6s ease, opacity 0.6s ease;
   }
   #word.explode {
-    animation: explodeAnim 0.6s forwards;
-  }
-  @keyframes explodeAnim {
-    0% {
-      opacity: 1;
-      transform: scale(1) rotate(0deg);
-      filter: brightness(1);
-    }
-    100% {
-      opacity: 0;
-      transform: scale(3) rotate(720deg);
-      filter: brightness(3);
-    }
+    transform: scale(3);
+    opacity: 0;
   }
   #status {
-    margin-top: 30px;
-    font-size: 24px;
-    min-height: 30px;
-    height: 30px;
-    color: #4caf50;
-  }
-  #controls {
-    margin-top: 40px;
+    font-size: 1.5rem;
+    margin: 10px 0 30px 0;
+    min-height: 2em;
   }
   button {
-    font-size: 20px;
-    padding: 12px 28px;
-    border: none;
-    border-radius: 10px;
-    background: #4a90e2;
-    color: white;
+    font-size: 1.2rem;
+    padding: 10px 20px;
+    margin: 0 10px;
     cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background: #0a84ff;
+    color: white;
     transition: background-color 0.3s ease;
-    user-select: none;
   }
   button:disabled {
-    background: #666;
+    background: #555;
     cursor: not-allowed;
   }
   button:hover:not(:disabled) {
-    background: #357ab8;
+    background: #0066ff;
   }
 </style>
 </head>
 <body>
-
-<div id="word">Нажмите Старт</div>
-<div id="status"></div>
-<div id="controls">
-  <button id="startBtn">Старт</button>
-  <button id="stopBtn" disabled>Стоп</button>
-</div>
+  <div id="word">Нажмите Старт</div>
+  <div id="status"></div>
+  <div>
+    <button id="startBtn">Старт</button>
+    <button id="stopBtn" disabled>Стоп</button>
+  </div>
 
 <script>
 (() => {
-  // Словарь слов и их переводов (можно расширить)
   const dictionary = [
     {en: 'apple', ru: ['яблоко', 'яблочко']},
     {en: 'cat', ru: ['кот', 'кошка', 'котик']},
@@ -107,7 +83,6 @@
   let currentIndex = 0;
   let isListening = false;
 
-  // Web Audio API для звуков
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   function playShot() {
@@ -144,9 +119,8 @@
     osc.stop(audioCtx.currentTime + 0.2);
   }
 
-  // Показываем текущее слово
   function showWord() {
-    currentIndex = (currentIndex >= dictionary.length) ? 0 : currentIndex;
+    currentIndex = currentIndex % dictionary.length;
     const word = dictionary[currentIndex];
     wordEl.textContent = word.en;
     wordEl.classList.remove('explode');
@@ -155,46 +129,36 @@
     statusEl.textContent = 'Произнесите перевод на русском';
   }
 
-  // Взрыв слова с анимацией и звуком выстрела
   function explodeWord() {
     wordEl.classList.add('explode');
     playShot();
     statusEl.textContent = 'Правильно! Следующее слово...';
   }
 
-  // Ошибка — звук осечки
   function misfire() {
     playMisfire();
     statusEl.textContent = 'Неверно, попробуйте ещё раз.';
   }
 
-  // Проверяем ответ пользователя
   function checkAnswer(transcript) {
     const userAnswer = transcript.toLowerCase().trim();
     const correctAnswers = dictionary[currentIndex].ru;
-
-    // Ищем точное совпадение среди вариантов
-    for (const ans of correctAnswers) {
-      if (userAnswer === ans.toLowerCase()) {
-        return true;
-      }
-    }
-    return false;
+    return correctAnswers.some(ans => ans.toLowerCase() === userAnswer);
   }
 
-  // Запускаем распознавание речи
   function startRecognition() {
+    if (isListening) return;
+
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert('Ваш браузер не поддерживает Web Speech API');
       return;
     }
-    if (isListening) return;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
     recognition.interimResults = false;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onstart = () => {
       isListening = true;
@@ -204,21 +168,17 @@
     };
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
+      const transcript = event.results[event.results.length - 1][0].transcript;
       console.log('Распознано:', transcript);
 
       if (checkAnswer(transcript)) {
         explodeWord();
-        // Ждем анимацию, потом следующее слово
+        currentIndex = (currentIndex + 1) % dictionary.length;
         setTimeout(() => {
-          currentIndex = (currentIndex + 1) % dictionary.length;
           showWord();
-          recognition.start();
         }, 700);
       } else {
         misfire();
-        // Можно сразу слушать дальше
-        recognition.start();
       }
     };
 
@@ -227,17 +187,11 @@
       statusEl.textContent = 'Ошибка распознавания: ' + event.error;
       if(event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         stopRecognition();
-      } else {
-        // Перезапуск при ошибках, кроме запрета
-        setTimeout(() => {
-          if (recognition) recognition.start();
-        }, 500);
       }
     };
 
     recognition.onend = () => {
       if (isListening) {
-        // Автоматически перезапускаем распознавание (чтобы не останавливалось)
         recognition.start();
       }
     };
@@ -248,15 +202,10 @@
 
   function stopRecognition() {
     if (recognition) {
-      recognition.onresult = null;
-      recognition.onerror = null;
-      recognition.onend = null;
-      try {
-        recognition.stop();
-      } catch {}
+      isListening = false;
+      recognition.stop();
       recognition = null;
     }
-    isListening = false;
     startBtn.disabled = false;
     stopBtn.disabled = true;
     statusEl.textContent = 'Распознавание остановлено.';
@@ -265,7 +214,6 @@
   }
 
   startBtn.addEventListener('click', () => {
-    // Для Web Audio API нужен пользовательский жест, поэтому контекст может быть заблокирован
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
@@ -277,6 +225,5 @@
   });
 })();
 </script>
-
 </body>
 </html>
