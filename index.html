@@ -100,7 +100,6 @@
       return null;
     }
     const recog = new SpeechRecognition();
-    recog.lang = 'ru-RU'; // распознаём русский (т.к. ответы на русском и английском произносим по-русски)
     recog.interimResults = false;
     recog.maxAlternatives = 1;
     recog.continuous = false;
@@ -108,14 +107,24 @@
   }
 
   function pickWord() {
-    // Случайное слово из словаря
     const idx = Math.floor(Math.random() * dictionary.length);
     currentWord = dictionary[idx];
-    // Случайно выбираем язык, на котором показываем слово
     currentLang = Math.random() < 0.5 ? "en" : "ru";
     wordEl.textContent = currentWord[currentLang];
     wordEl.classList.remove('fly-up');
     statusEl.textContent = 'Скажите перевод на ' + (currentLang === 'en' ? 'русском' : 'английском');
+
+    if (recognition) {
+      // Переключаем язык распознавания: если слово на английском — распознаём русский (ответ на русском),
+      // если слово на русском — распознаём английский (ответ на английском)
+      recognition.lang = currentLang === 'en' ? 'ru-RU' : 'en-US';
+
+      if (listening) {
+        recognition.stop();
+        // Немного подождём, потом запустим снова с новым языком
+        setTimeout(() => recognition.start(), 200);
+      }
+    }
   }
 
   function normalizeText(text) {
@@ -137,7 +146,6 @@
   function flyWord() {
     return new Promise(resolve => {
       wordEl.classList.add('fly-up');
-      // Ждём окончания анимации (~0.8с)
       setTimeout(() => resolve(), 900);
     });
   }
@@ -199,12 +207,10 @@
 
   recognition.addEventListener('end', () => {
     if (listening) {
-      // Автоматически перезапускаем распознавание для удобства
       recognition.start();
     }
   });
 
-  // Запускаем игру сразу с первым словом
   pickWord();
 })();
 </script>
