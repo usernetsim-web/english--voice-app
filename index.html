@@ -1,222 +1,213 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <title>Игра с распознаванием речи</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 2rem;
-      background: #f0f0f0;
-    }
-    #word {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-    }
-    #status {
-      margin: 1rem 0;
-      font-weight: bold;
-      min-height: 1.2em;
-    }
-    button {
-      font-size: 1.2rem;
-      padding: 0.5rem 1rem;
-      margin: 0 0.5rem;
-      cursor: pointer;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Игра на перевод (англ ↔ рус)</title>
+<style>
+  body {
+    margin: 0; padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #121212;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  h1 {
+    margin-bottom: 1rem;
+  }
+  #word {
+    font-size: 4rem;
+    font-weight: 700;
+    margin: 2rem 0;
+    transition: transform 0.8s ease, opacity 0.8s ease;
+  }
+  #word.fly-up {
+    transform: translateY(-150vh) rotate(720deg);
+    opacity: 0;
+  }
+  #status {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    min-height: 1.4em;
+  }
+  #start-btn {
+    font-size: 1.5rem;
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 10px;
+    background: #0a84ff;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s ease;
+  }
+  #start-btn:hover:not(:disabled) {
+    background: #0066ff;
+  }
+  #start-btn:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+</style>
 </head>
 <body>
-  <h1>Переведи слово с английского на русский</h1>
-  <div id="word">...</div>
-  <div id="status"></div>
-  <button id="startBtn">Начать</button>
-  <button id="stopBtn" disabled>Остановить</button>
 
-  <script>
-    (() => {
-      const dictionary = [
-        {en: 'apple', ru: ['яблоко', 'яблочко']},
-        {en: 'cat', ru: ['кот', 'кошка', 'котик']},
-        {en: 'dog', ru: ['собака', 'пёс', 'пес']},
-        {en: 'house', ru: ['дом', 'домик']},
-        {en: 'car', ru: ['машина', 'автомобиль']},
-        {en: 'book', ru: ['книга', 'книжка']},
-        {en: 'sun', ru: ['солнце']},
-        {en: 'water', ru: ['вода']},
-        {en: 'tree', ru: ['дерево']},
-        {en: 'bird', ru: ['птица']},
-      ];
+<h1>Игра: переведи слово</h1>
+<div id="word">...</div>
+<div id="status">Нажмите "Старт" и скажите перевод</div>
+<button id="start-btn">Старт</button>
 
-      const wordEl = document.getElementById('word');
-      const statusEl = document.getElementById('status');
-      const startBtn = document.getElementById('startBtn');
-      const stopBtn = document.getElementById('stopBtn');
+<audio id="shot-sound" src="https://actions.google.com/sounds/v1/weapons/shotgun_fire.ogg" preload="auto"></audio>
 
-      let recognition = null;
-      let currentIndex = 0;
-      let isListening = false;
+<script>
+(() => {
+  const wordEl = document.getElementById('word');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('start-btn');
+  const shotSound = document.getElementById('shot-sound');
 
-      // Аудиоконтекст для звуков
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Словарь: английское слово → русское
+  const dictionary = [
+    { en: "apple", ru: "яблоко" },
+    { en: "cat", ru: "кот" },
+    { en: "dog", ru: "собака" },
+    { en: "house", ru: "дом" },
+    { en: "car", ru: "машина" },
+    { en: "sun", ru: "солнце" },
+    { en: "water", ru: "вода" },
+    { en: "book", ru: "книга" },
+    { en: "tree", ru: "дерево" },
+    { en: "bird", ru: "птица" }
+  ];
 
-      function playShot() {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
+  let currentWord = null;
+  let currentLang = null; // "en" или "ru"
+  let recognition = null;
+  let listening = false;
 
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  // Инициализация распознавания речи
+  function initRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Ваш браузер не поддерживает распознавание речи. Используйте Chrome или Edge.');
+      startBtn.disabled = true;
+      return null;
+    }
+    const recog = new SpeechRecognition();
+    recog.lang = 'ru-RU'; // распознаём русский (т.к. ответы на русском и английском произносим по-русски)
+    recog.interimResults = false;
+    recog.maxAlternatives = 1;
+    recog.continuous = false;
+    return recog;
+  }
 
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
+  function pickWord() {
+    // Случайное слово из словаря
+    const idx = Math.floor(Math.random() * dictionary.length);
+    currentWord = dictionary[idx];
+    // Случайно выбираем язык, на котором показываем слово
+    currentLang = Math.random() < 0.5 ? "en" : "ru";
+    wordEl.textContent = currentWord[currentLang];
+    wordEl.classList.remove('fly-up');
+    statusEl.textContent = 'Скажите перевод на ' + (currentLang === 'en' ? 'русском' : 'английском');
+  }
 
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.1);
-      }
+  function normalizeText(text) {
+    return text.trim().toLowerCase().replace(/[.,!?]/g, '');
+  }
 
-      function explodeWord() {
-        playShot();
-        statusEl.textContent = 'Правильно! 🎉';
-        statusEl.style.color = 'green';
-      }
+  function checkAnswer(answer) {
+    answer = normalizeText(answer);
+    let correctAnswer = currentLang === 'en' ? currentWord.ru : currentWord.en;
+    correctAnswer = normalizeText(correctAnswer);
+    return answer === correctAnswer;
+  }
 
-      function misfire() {
-        statusEl.textContent = 'Неправильно, попробуйте ещё.';
-        statusEl.style.color = 'red';
-      }
+  function playShot() {
+    shotSound.currentTime = 0;
+    shotSound.play();
+  }
 
-      function showWord() {
-        statusEl.textContent = '';
-        wordEl.textContent = dictionary[currentIndex].en;
-      }
+  function flyWord() {
+    return new Promise(resolve => {
+      wordEl.classList.add('fly-up');
+      // Ждём окончания анимации (~0.8с)
+      setTimeout(() => resolve(), 900);
+    });
+  }
 
-      function checkAnswer(text) {
-        if (!text) return false;
-        const variants = dictionary[currentIndex].ru;
-        const answer = text.toLowerCase().trim();
-        return variants.some(v => v.toLowerCase() === answer);
-      }
+  function startRecognition() {
+    if (!recognition) return;
+    listening = true;
+    startBtn.disabled = true;
+    statusEl.textContent = 'Слушаю... Говорите перевод';
+    try {
+      recognition.start();
+    } catch(e) {
+      statusEl.textContent = 'Ошибка запуска распознавания.';
+      listening = false;
+      startBtn.disabled = false;
+    }
+  }
 
-      // Функция озвучки английского слова, возвращает Promise для await
-      function sayEnglishWord(text) {
-        return new Promise(resolve => {
-          if (!window.speechSynthesis) {
-            resolve();
-            return;
-          }
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'en-US';
-          utterance.rate = 0.9;
-          utterance.onend = resolve;
-          window.speechSynthesis.speak(utterance);
-        });
-      }
+  function stopRecognition() {
+    if (!recognition) return;
+    listening = false;
+    recognition.stop();
+    startBtn.disabled = false;
+  }
 
-      function initRecognition() {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-          statusEl.textContent = 'Ваш браузер не поддерживает распознавание речи.';
-          startBtn.disabled = true;
-          return null;
-        }
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recog = new SpeechRecognition();
-        recog.lang = 'ru-RU';
-        recog.interimResults = false;
-        recog.continuous = true;
-        recog.maxAlternatives = 1;
-        return recog;
-      }
+  startBtn.addEventListener('click', () => {
+    if (!listening) {
+      startRecognition();
+    } else {
+      stopRecognition();
+    }
+  });
 
-      async function onRecognitionResult(event) {
-        const transcript = event.results[event.results.length - 1][0].transcript;
-        console.log('Распознано:', transcript);
+  recognition = initRecognition();
+  if (!recognition) return;
 
-        if (checkAnswer(transcript)) {
-          explodeWord();
-          // Останавливаем распознавание, чтобы не мешал голосовой синтез
-          recognition.stop();
-          isListening = false;
-          startBtn.disabled = false;
-          stopBtn.disabled = true;
+  recognition.addEventListener('result', async e => {
+    if (!e.results || e.results.length === 0) {
+      statusEl.textContent = 'Не распознано. Попробуйте ещё раз.';
+      return;
+    }
+    const transcript = e.results[0][0].transcript;
+    statusEl.textContent = `Вы сказали: "${transcript}"`;
 
-          await sayEnglishWord(dictionary[currentIndex].en);
+    if (checkAnswer(transcript)) {
+      playShot();
+      await flyWord();
+      pickWord();
+    } else {
+      statusEl.textContent = `Неверно. Попробуйте ещё раз.`;
+    }
+  });
 
-          // Следующее слово
-          currentIndex = (currentIndex + 1) % dictionary.length;
-          showWord();
+  recognition.addEventListener('error', e => {
+    statusEl.textContent = `Ошибка распознавания: ${e.error}`;
+    listening = false;
+    startBtn.disabled = false;
+  });
 
-          // Возобновляем распознавание
-          recognition.start();
-          isListening = true;
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
+  recognition.addEventListener('end', () => {
+    if (listening) {
+      // Автоматически перезапускаем распознавание для удобства
+      recognition.start();
+    }
+  });
 
-          statusEl.textContent = '';
-        } else {
-          misfire();
-        }
-      }
+  // Запускаем игру сразу с первым словом
+  pickWord();
+})();
+</script>
 
-      function startListening() {
-        if (!recognition) return;
-        if (isListening) return;
-        recognition.start();
-        isListening = true;
-        statusEl.textContent = 'Говорите...';
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-      }
-
-      function stopListening() {
-        if (!recognition) return;
-        if (!isListening) return;
-        recognition.stop();
-        isListening = false;
-        statusEl.textContent = 'Остановлено.';
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-      }
-
-      function setupRecognition() {
-        recognition = initRecognition();
-        if (!recognition) return;
-
-        recognition.onresult = onRecognitionResult;
-
-        recognition.onerror = (event) => {
-          console.error('Ошибка распознавания:', event.error);
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            statusEl.textContent = 'Нет доступа к микрофону. Разрешите доступ.';
-            startBtn.disabled = true;
-          }
-        };
-
-        recognition.onend = () => {
-          // Автоматически перезапускаем распознавание, если слушаем
-          if (isListening) {
-            recognition.start();
-          }
-        };
-      }
-
-      startBtn.addEventListener('click', () => {
-        // Для некоторых браузеров AudioContext нужно запускать по событию пользователя
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
-        }
-        startListening();
-      });
-
-      stopBtn.addEventListener('click', () => {
-        stopListening();
-      });
-
-      // Инициализация
-      showWord();
-      setupRecognition();
-    })();
-  </script>
 </body>
 </html>
