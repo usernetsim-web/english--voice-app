@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Английское слово — скажи перевод</title>
+<style>
+  body {
+    background: #121212;
+    color: #eee;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    user-select: none;
+  }
+  #word {
+    font-size: 72px;
+    font-weight: 700;
+    padding: 20px 40px;
+    border-radius: 12px;
+    background: linear-gradient(45deg, #4a90e2, #50e3c2);
+    color: white;
+    cursor: default;
+    user-select: none;
+    transition: transform 0.6s ease, opacity 0.6s ease;
+  }
+  #word.explode {
+    animation: explodeAnim 0.6s forwards;
+  }
+  @keyframes explodeAnim {
+    0% {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+      filter: brightness(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(3) rotate(720deg);
+      filter: brightness(3);
+    }
+  }
+  #status {
+    margin-top: 30px;
+    font-size: 24px;
+    min-height: 30px;
+    height: 30px;
+    color: #4caf50;
+  }
+  #controls {
+    margin-top: 40px;
+  }
+  button {
+    font-size: 20px;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 10px;
+    background: #4a90e2;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  button:disabled {
+    background: #666;
+    cursor: not-allowed;
+  }
+  button:hover:not(:disabled) {
+    background: #357ab8;
+  }
+</style>
+</head>
+<body>
+
+<div id="word">Нажмите Старт</div>
+<div id="status"></div>
+<div id="controls">
+  <button id="startBtn">Старт</button>
+  <button id="stopBtn" disabled>Стоп</button>
+</div>
+
+<script>
+(() => {
+  // Словарь слов и их переводов (можно расширить)
+  const dictionary = [
+    {en: 'apple', ru: ['яблоко', 'яблочко']},
+    {en: 'cat', ru: ['кот', 'кошка', 'котик']},
+    {en: 'dog', ru: ['собака', 'пёс', 'пес']},
+    {en: 'house', ru: ['дом', 'домик']},
+    {en: 'car', ru: ['машина', 'автомобиль']},
+    {en: 'book', ru: ['книга', 'книжка']},
+    {en: 'sun', ru: ['солнце']},
+    {en: 'water', ru: ['вода']},
+    {en: 'tree', ru: ['дерево']},
+    {en: 'bird', ru: ['птица']},
+  ];
+
+  const wordEl = document.getElementById('word');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+
+  let recognition = null;
+  let currentIndex = 0;
+  let isListening = false;
+
+  // Web Audio API для звуков
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function playShot() {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    osc.stop(audioCtx.currentTime + 0.15);
+  }
+
+  function playMisfire() {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+    osc.stop(audioCtx.currentTime + 0.2);
+  }
+
+  // Показываем текущее слово
+  function showWord() {
+    currentIndex = (currentIndex >= dictionary.length) ? 0 : currentIndex;
+    const word = dictionary[currentIndex];
+    wordEl.textContent = word.en;
+    wordEl.classList.remove('explode');
+    wordEl.style.opacity = '1';
+    wordEl.style.transform = 'scale(1)';
+    statusEl.textContent = 'Произнесите перевод на русском';
+  }
+
+  // Взрыв слова с анимацией и звуком выстрела
+  function explodeWord() {
+    wordEl.classList.add('explode');
+    playShot();
+    statusEl.textContent = 'Правильно! Следующее слово...';
+  }
+
+  // Ошибка — звук осечки
+  function misfire() {
+    playMisfire();
+    statusEl.textContent = 'Неверно, попробуйте ещё раз.';
+  }
+
+  // Проверяем ответ пользователя
+  function checkAnswer(transcript) {
+    const userAnswer = transcript.toLowerCase().trim();
+    const correctAnswers = dictionary[currentIndex].ru;
+
+    // Ищем точное совпадение среди вариантов
+    for (const ans of correctAnswers) {
+      if (userAnswer === ans.toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Запускаем распознавание речи
+  function startRecognition() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Ваш браузер не поддерживает Web Speech API');
+      return;
+    }
+    if (isListening) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      isListening = true;
+      statusEl.textContent = 'Говорите сейчас...';
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      console.log('Распознано:', transcript);
+
+      if (checkAnswer(transcript)) {
+        explodeWord();
+        // Ждем анимацию, потом следующее слово
+        setTimeout(() => {
+          currentIndex = (currentIndex + 1) % dictionary.length;
+          showWord();
+          recognition.start();
+        }, 700);
+      } else {
+        misfire();
+        // Можно сразу слушать дальше
+        recognition.start();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.warn('Ошибка распознавания:', event.error);
+      statusEl.textContent = 'Ошибка распознавания: ' + event.error;
+      if(event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        stopRecognition();
+      } else {
+        // Перезапуск при ошибках, кроме запрета
+        setTimeout(() => {
+          if (recognition) recognition.start();
+        }, 500);
+      }
+    };
+
+    recognition.onend = () => {
+      if (isListening) {
+        // Автоматически перезапускаем распознавание (чтобы не останавливалось)
+        recognition.start();
+      }
+    };
+
+    showWord();
+    recognition.start();
+  }
+
+  function stopRecognition() {
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try {
+        recognition.stop();
+      } catch {}
+      recognition = null;
+    }
+    isListening = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusEl.textContent = 'Распознавание остановлено.';
+    wordEl.textContent = 'Нажмите Старт';
+    wordEl.classList.remove('explode');
+  }
+
+  startBtn.addEventListener('click', () => {
+    // Для Web Audio API нужен пользовательский жест, поэтому контекст может быть заблокирован
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    startRecognition();
+  });
+
+  stopBtn.addEventListener('click', () => {
+    stopRecognition();
+  });
+})();
+</script>
+
+</body>
+</html>
